@@ -73,7 +73,7 @@ usage() {
   echo "-b, --build-version     Set the build version number to override a discovered version"
   echo "    --clean             Delete any built binaries by removing the 'dist' and 'releases' folders"
   echo "-c, --config            Path to your 'build.config' file if not using either the .ci or ci directory"
-  echo "    --debug             Run using debug mode to display more log details"
+  echo "    --debug             Run using debug mode to display more log details (implies dry-run)"
   echo "    --docker            Sets the build folder output to '${DOCKER_DIST_DIR}' to aid multi stage builds"
   echo "    --dry-run           Print out what will happen, do not execute"
   echo "-h, --help              Show this help message"
@@ -114,6 +114,7 @@ while [[ $# -gt 0 ]]; do
     ;;
     --debug)
     IS_DEBUG=true
+    IS_DRY_RUN=true
     ;;
     --docker)
     IS_DOCKER=true
