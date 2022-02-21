@@ -381,6 +381,9 @@ if [[ -d ${DEFAULT_DIST_DIR} ]]; then
   fi
 fi
 
+BUILD_TARGETS=$(get_build_targets)
+log_debug "Build Targets: ${BUILD_TARGETS}"
+
 TARGETS=""
 if [[ ${IS_BUILD_ALL} == false ]]; then
   arch="$(get_arch)"
