@@ -1,6 +1,8 @@
 #!/bin/bash
 # set -exo pipefail
 
+# Source: https://github.com/Jordan-Cartwright/go-build-script
+
 # ------------------------------------
 #  ____   __   ____   __   _  _  ____
 # (  _ \ / _\ (  _ \ / _\ ( \/ )/ ___)
@@ -23,8 +25,11 @@
 # ------------------------------------------------------------------------------------------------------------------------
 # Configuration Variables
 # ------------------------------------------------------------------------------------------------------------------------
-# BUILD_TARGETS       - A comma separated list of systems to build for when using
-#                       the --all flag in the format of GOOS-GOARCH (i.e. "linux-amd64,linux-arm64").
+# BUILD_OS            - A comma separated list of valid GOOS operating systems to to build for when using
+#                       the --all flag (i.e. "darwin,linux").
+# ------------------------------------------------------------------------------------------------------------------------
+# BUILD_ARCH          - A comma separated list of valid GOARCH architectures to build for when using
+#                       the --all flag (i.e. "amd64,arm64").
 # ------------------------------------------------------------------------------------------------------------------------
 # GOLANG_BINARY_NAME  - The binary name that will be used.
 # ------------------------------------------------------------------------------------------------------------------------
@@ -134,7 +139,7 @@ while [[ $# -gt 0 ]]; do
     USE_COLOR=false
     ;;
     -v|--version)
-    echo "v1.1.0"
+    echo "v2.0.0"
     exit 0
     ;;
     --with-cgo)
@@ -192,6 +197,29 @@ get_arch() {
     *) echo "Unsupported architecture $(arch)" ; exit 1 ;;
   esac
   echo ${arch}
+}
+
+# Generate the build targets list from the build.confg
+get_build_targets() {
+  local build_os=$(echo ${BUILD_OS} | sed 's/,/ /g')
+  local build_arch=$(echo ${BUILD_ARCH} | sed 's/,/ /g')
+  local build_targets=""
+
+  for os in $build_os; do
+    for arch in $build_arch; do
+      # validate a supported GOOS and GOARCH combination
+      if go tool dist list | grep -w ${os}/${arch} > /dev/null ; then
+        # add the combo to the build targets list
+        if [[ -z ${build_targets} ]]; then
+          build_targets="${os}/${arch}"
+        else
+          build_targets+=",${os}/${arch}"
+        fi
+      fi
+    done
+  done
+
+  echo ${build_targets}
 }
 
 # Finds the most recent git tag and returns 'edge' if the latest tag doesn't exist
@@ -291,8 +319,24 @@ log_debug "Version: ${VERSION}"
 log_debug "Package: ${GOLANG_PACKAGE}"
 
 # Check if configured variables exist
-if [[ -z ${BUILD_TARGETS} ]]; then
-  log_warn "There are no build targets configured, '--all' will not work properly, set the BUILD_TARGETS variable"
+if [[ -z ${BUILD_OS} ]]; then
+  message="There are no build operating systems configured, '--all' will not work properly, set the BUILD_OS variable"
+  if [[ ${IS_BUILD_ALL} == true ]]; then
+    log_err ${message}
+    is_error=true
+  else
+    log_warn ${message}
+  fi
+fi
+
+if [[ -z ${BUILD_ARCH} ]]; then
+  message="There are no build architectures configured, '--all' will not work properly, set the BUILD_ARCH variable"
+  if [[ ${IS_BUILD_ALL} == true ]]; then
+    log_err ${message}
+    is_error=true
+  else
+    log_warn ${message}
+  fi
 fi
 
 if [[ -z ${GOLANG_BINARY_NAME} ]]; then
@@ -352,6 +396,8 @@ if [[ ${IS_BUILD_ALL} == false ]]; then
   fi
   TARGETS="$(uname -s | awk '{print tolower($0)}')/${arch}"
 else
+  BUILD_TARGETS=$(get_build_targets)
+  log_debug "Build Targets: ${BUILD_TARGETS}"
   TARGETS=${BUILD_TARGETS}
 fi
 
