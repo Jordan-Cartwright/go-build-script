@@ -23,8 +23,11 @@
 # ------------------------------------------------------------------------------------------------------------------------
 # Configuration Variables
 # ------------------------------------------------------------------------------------------------------------------------
-# BUILD_TARGETS       - A comma separated list of systems to build for when using
-#                       the --all flag in the format of GOOS-GOARCH (i.e. "linux-amd64,linux-arm64").
+# BUILD_OS            - A comma separated list of valid GOOS operating systems to to build for when using
+#                       the --all flag (i.e. "darwin,linux").
+# ------------------------------------------------------------------------------------------------------------------------
+# BUILD_ARCH          - A comma separated list of valid GOARCH architectures to build for when using
+#                       the --all flag (i.e. "amd64,arm64").
 # ------------------------------------------------------------------------------------------------------------------------
 # GOLANG_BINARY_NAME  - The binary name that will be used.
 # ------------------------------------------------------------------------------------------------------------------------
