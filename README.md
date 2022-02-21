@@ -1,2 +1,10 @@
-# go-build-script
-Bash script to build a golang project
+# Go Build Script
+
+A bash script used to build a go binary with some configuration options
+
+## Usage
+
+### Show help
+```
+./bin/build --help
+```
