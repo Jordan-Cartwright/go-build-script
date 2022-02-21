@@ -1,0 +1,455 @@
+#!/bin/bash
+# set -exo pipefail
+
+# ------------------------------------
+#  ____   __   ____   __   _  _  ____
+# (  _ \ / _\ (  _ \ / _\ ( \/ )/ ___)
+#  ) __//    \ )   //    \/ \/ \\___ \
+# (__)  \_/\_/(__\_)\_/\_/\_)(_/(____/
+# ------------------------------------
+
+# This script requires you to have a few environment variables set. As this is targeted
+# to be used in a CICD environment, you should set these either via the Jenkins/Travis
+# web-ui or in the `.travis.yml` or `pipeline` file respectfully. Additionally this
+# script will attempt to source a `build.config` file located in either a `.ci` or `ci` 
+# directory using the following format:
+#
+# Example build.config
+# ```
+# VARIABLE=value
+# VARIABLE2=value2
+# ```
+#
+# ------------------------------------------------------------------------------------------------------------------------
+# Configuration Variables
+# ------------------------------------------------------------------------------------------------------------------------
+# BUILD_TARGETS       - A comma separated list of systems to build for when using
+#                       the --all flag in the format of GOOS-GOARCH (i.e. "linux-amd64,linux-arm64").
+# ------------------------------------------------------------------------------------------------------------------------
+# GOLANG_BINARY_NAME  - The binary name that will be used.
+# ------------------------------------------------------------------------------------------------------------------------
+# GOLANG_LDFLAGS      - The build LDFLAGS to add. This script supports adding the VERSION and GIT_COMMIT variables.
+#                       The Default is `-s -w -X main.version=${VERSION} -X main.gitCommit=${GIT_COMMIT}`.
+# ------------------------------------------------------------------------------------------------------------------------
+# GOLANG_PACKAGE      - The go package name (i.e. go module name or github path)
+# ------------------------------------------------------------------------------------------------------------------------
+# GOLANG_VERSION_PKG  - The location of the version package in the code base. (i.e. internal/version)
+# ------------------------------------------------------------------------------------------------------------------------
+# RELEASE_EXTRA_FILES - A comma separated list of files to include in the release tarball (i.e. "LICENCE,README.md").
+# ------------------------------------------------------------------------------------------------------------------------
+
+cd $(cd `dirname "$0"`; cd ..; pwd)
+
+if [ -t 1 ]; then
+  RED=$(printf '\033[31m')
+  GREEN=$(printf '\033[32m')
+  YELLOW=$(printf '\033[33m')
+  BLUE=$(printf '\033[34m')
+  BOLD=$(printf '\033[1m')
+  DIM=$(printf '\033[2m')
+  UNDER=$(printf '\033[4m')
+  RESET=$(printf '\033[m')
+fi
+
+# Default values
+DEFAULT_BUILD_CONFIG="build.config"
+DEFAULT_DIST_DIR="dist"
+DOCKER_DIST_DIR="dist/docker"
+DEFAULT_GO_MAIN_FILE="main.go"
+VERSION=""
+USE_COLOR=true
+IS_BUILD_ALL=false
+IS_CLEAN=false
+IS_DEBUG=false
+IS_DOCKER=false
+IS_DRY_RUN=false
+IS_PACKAGE=false
+IS_WITH_CGO=false
+
+usage() {
+  echo -e "A build script for building our golang binary with version information \n\n"
+  echo "Options:"
+  echo "    --all               Build all system binaries"
+  echo "-b, --build-version     Set the build version number to override a discovered version"
+  echo "    --clean             Delete any built binaries by removing the 'dist' and 'releases' folders"
+  echo "-c, --config            Path to your 'build.config' file if not using either the .ci or ci directory"
+  echo "    --debug             Run using debug mode to display more log details"
+  echo "    --docker            Sets the build folder output to '${DOCKER_DIST_DIR}' to aid multi stage builds"
+  echo "    --dry-run           Print out what will happen, do not execute"
+  echo "-h, --help              Show this help message"
+  echo "-m, --main              Set the name of the main file to look for (default: ${DEFAULT_GO_MAIN_FILE})"
+  echo "    --no-color          Do not output colored log messages"
+  echo "-p  --package           Creates the release artifacts in the 'releases' folder"
+  echo "-v, --version           Show the version information"
+  echo "    --with-cgo          Sets CGO_ENABLED to 1 when building your binary"
+  echo ""
+  echo "Usage:"
+  echo "${0} [-b|--build-version v1.0.0] [--with-cgo] [--no-color] [--dry-run]"
+  echo ""
+}
+
+while [[ $# -gt 0 ]]; do
+  key="$1"
+  case $key in
+    -h|--help)
+    usage
+    exit 0
+    ;;
+    --all)
+    IS_BUILD_ALL=true
+    ;;
+    -b|--build-version)
+    VERSION=$2
+    shift
+    ;;
+    --clean)
+    IS_CLEAN=true
+    ;;
+    -c|--config)
+    CONFIG=$2
+    shift
+    ;;
+    -c=*|--config=*)
+    CONFIG=${key#*=}
+    ;;
+    --debug)
+    IS_DEBUG=true
+    ;;
+    --docker)
+    IS_DOCKER=true
+    ;;
+    --dry-run)
+    IS_DRY_RUN=true
+    ;;
+    -m|--main)
+    DEFAULT_GO_MAIN_FILE=$2
+    shift
+    ;;
+    -p|--package)
+    IS_PACKAGE=true
+    ;;
+    --no-color)
+    USE_COLOR=false
+    ;;
+    -v|--version)
+    echo "v1.1.0"
+    exit 0
+    ;;
+    --with-cgo)
+    IS_WITH_CGO=true
+    ;;
+    *)
+    echo "Unknown option: $key"
+    usage
+    exit 1
+    ;;
+  esac
+  shift
+done
+
+# Logging functions
+log_debug() {
+  if [[ ${IS_DEBUG} == true ]]; then
+    echo "DEBU: $*"
+  fi
+}
+
+log_info() {
+  if [[ ${USE_COLOR} == true ]]; then
+    printf "${BLUE}INFO:${RESET} %s\n" "$*"
+  else
+    echo "INFO: $*"
+  fi
+}
+
+log_warn() {
+  if [[ ${USE_COLOR} == true ]]; then
+    printf "${YELLOW}WARN:${RESET} %s\n" "$*"
+  else
+    echo "WARN: $*"
+  fi
+}
+
+log_err() {
+  if [[ ${USE_COLOR} == true ]]; then
+    printf "${RED}ERRO:${RESET} %s\n" "$*"
+  else
+    echo "ERRO: $*"
+  fi
+}
+
+# Gets the canonicalized names for target architectures
+get_arch() {
+  arch=""
+  case "$(arch)" in
+    amd64|x86_64)    arch='amd64' ;;
+    aarch64|arm64)   arch='arm64' ;;
+    armhf|armv7l)    arch='armv7l' ;;
+    s390x)           arch='s390x' ;;
+    ppc64el|ppc64le) arch='ppc64le' ;;
+    *) echo "Unsupported architecture $(arch)" ; exit 1 ;;
+  esac
+  echo ${arch}
+}
+
+# Finds the most recent git tag and returns 'edge' if the latest tag doesn't exist
+# for the HEAD branch and if the git working directory is not in a clean state
+#
+# Example: (assume latest tag is v1.2.1)
+#   tag=$(get_latest_tag)
+#   echo $tag
+# Result:
+#   1.2.1
+#
+# More info: https://git-scm.com/docs/git-describe
+get_latest_tag() {
+  if [[ -z "$(git status --porcelain)" || ${IS_DOCKER} == true ]]; then
+    # Working directory is clean
+    local latest_tag=$(git describe --tags --exact-match `git rev-parse HEAD` --match='v[0-9]*.[0-9]*.[0-9]*' 2> /dev/null)
+    # Return 'edge' if the tags associated with the current commit are not matching the 'vX.X.X' format
+    if [[ -n ${latest_tag} ]]; then
+      # The tag is a versioned tag. Return just the version
+      # by removing the prepended 'v' (i.e v1.2.1 -> 1.2.1)
+      echo $(echo ${latest_tag} 2> /dev/null | sed 's/^.//')
+      return
+    fi
+  fi
+  # Contains uncommitted changes or there is no tag associated with the current commit
+  echo "edge"
+}
+
+# Finds the path to the main go file
+find_main_file() {
+  local main_file=$(find . -name "${DEFAULT_GO_MAIN_FILE}")
+  echo ${main_file}
+}
+
+# Removes the build output directories
+clean_dist() {
+  local build_folder="./dist"
+  local release_folder="./releases"
+
+  if [[ -d ${build_folder} ]]; then
+    log_info "Removing '${build_folder}' folder"
+    rm -r ${build_folder}
+  fi
+  if [[ -d ${release_folder} ]]; then
+    log_info "Removing '${release_folder}' folder"
+    rm -r ${release_folder}
+  fi
+  log_info "Clean up completed"
+}
+
+if [[ ${IS_DRY_RUN} == true ]]; then
+  log_warn "Dry run executing, nothing will be built"
+fi
+
+if [[ ${IS_CLEAN} == true ]]; then
+  clean_dist
+  exit 0
+fi
+
+# ========================================
+# STEP 1: Determinate the required values
+# ========================================
+
+log_debug "Execution Dir: ${PWD}"
+
+# Find the version and commit information before loading the configuration
+if [[ -z ${VERSION} ]]; then
+  # This returns the latest tag (using git commit hash if not found) and removes the first character from that found tag/hash
+  # VERSION="$(git describe --tags --always --abbrev=0 --match='v[0-9]*.[0-9]*.[0-9]*' 2> /dev/null | sed 's/^.//')"
+  GIT_VERSION=$(get_latest_tag)
+  VERSION=${GIT_VERSION}
+fi
+GIT_COMMIT="$(git rev-parse --short HEAD)"
+
+# Load the build configuration file
+if [[ -n ${CONFIG} ]]; then
+  # load the config from a defined custom path
+  log_debug "Loading the config file from ${CONFIG}"
+  . ${CONFIG} > /dev/null 2>&1
+  if [[ $? == 1 ]]; then
+    log_err "No configuration file was found at '${CONFIG}'"
+    exit 1
+  fi
+else
+  # load the config from the defaults paths
+  log_debug "Loading build.config file"
+  . .ci/${DEFAULT_BUILD_CONFIG} > /dev/null 2>&1 || . ci/${DEFAULT_BUILD_CONFIG} > /dev/null 2>&1
+  if [[ $? == 1 ]]; then
+    log_err "No configuration file was found in the default .ci/ci folders. If you have a custom path please use the -c|--config option"
+    exit 1
+  fi
+fi
+log_debug "config file loaded"
+
+log_debug "Commit: ${GIT_COMMIT}"
+log_debug "Version: ${VERSION}"
+log_debug "Package: ${GOLANG_PACKAGE}"
+
+# Check if configured variables exist
+if [[ -z ${BUILD_TARGETS} ]]; then
+  log_warn "There are no build targets configured, '--all' will not work properly, set the BUILD_TARGETS variable"
+fi
+
+if [[ -z ${GOLANG_BINARY_NAME} ]]; then
+  log_warn "There is no binary name configred, the binary will use the golang default, set the GOLANG_BINARY_NAME variable"
+fi
+
+if [[ -z ${GOLANG_PACKAGE} ]]; then
+  log_err "There is no go package name configred, set the GOLANG_PACKAGE variable"
+  is_error=true
+fi
+
+if [[ -z ${GOLANG_VERSION_PKG} ]]; then
+  log_err "There is no version package location configred, set the GOLANG_VERSION_PKG variable"
+  is_error=true
+fi
+
+# error out if something needed is not configured
+if [[ ${is_error} == true ]]; then
+  log_info "There are missing settings in your build.config, fix the errors to resume"
+  exit 1
+fi
+
+# ========================================
+# STEP 2: Build the ldflags
+# ========================================
+
+# Load the ldflags with the build.config
+if [[ -z ${GOLANG_LDFLAGS} ]]; then
+  # This configuration is not set, use the default ldflags
+  DEFAULT_LDFLAGS="-s -w -X main.version=${VERSION} -X main.gitCommit=${GIT_COMMIT}"
+  LDFLAGS=${DEFAULT_LDFLAGS}
+else
+  LDFLAGS=${GOLANG_LDFLAGS}
+fi
+
+log_debug "${LDFLAGS}"
+
+# ========================================
+# STEP 3: Actual Go build process
+# ========================================
+
+TARGETS=""
+if [[ ${IS_BUILD_ALL} == false ]]; then
+  arch="$(get_arch)"
+  log_debug "arch: ${arch}"
+  if [[ "${arch}" == *"Unsupported architecture"* ]]; then
+    log_err ${arch}
+    exit 1
+  fi
+  TARGETS="$(uname -s | awk '{print tolower($0)}')-${arch}"
+else
+  TARGETS=${BUILD_TARGETS}
+fi
+
+# Convert comma separated string to space separated string to loop
+TARGETS=$(echo ${TARGETS} | sed 's/,/ /g')
+
+log_debug "Building binaries for: ${TARGETS}"
+
+for target in $TARGETS; do
+  # split the target into target_info based on the delimiter, '-'
+  IFS="-" read -r -a target_info <<< "$target"
+
+  export GOOS=${target_info[0]}
+  export GOARCH=${target_info[1]}
+
+  # /bin/sh safe way to split the target if using alpine
+  # target_info="${target//-/ }"
+  # export GOOS=$(echo ${target_info} | awk '{print $1}')
+  # export GOARCH=$(echo ${target_info} | awk '{print $2}')
+
+  if [[ "$GOOS" == "windows" ]]; then
+    GOLANG_BINARY_NAME=${GOLANG_BINARY_NAME}.exe
+  fi
+
+  DESTINATION="${DEFAULT_DIST_DIR}/${target}"
+  if [[ ${IS_DOCKER} == true ]]; then
+    DESTINATION=${DOCKER_DIST_DIR}
+  fi
+
+  BINARY="${DESTINATION}/${GOLANG_BINARY_NAME}"
+
+  log_debug "Creating directory (${DESTINATION})"
+  if [[ ${IS_DRY_RUN} == false ]]; then
+    mkdir -p ${DESTINATION}
+  fi
+
+  if [[ ${IS_WITH_CGO} == false ]]; then
+    # Building with CGO_ENABLED set to '0' to make a static binary which allows us to put the binary in a scratch image
+    cgo_option="CGO_ENABLED=0"
+  else
+    # This isn't required but showing it allows verbosity when debugging why something could have gone wrong
+    cgo_option="CGO_ENABLED=1"
+  fi
+  log_debug "CGO configuration set to: ${cgo_option}"
+
+  log_info "Building the ${target} binary for the ${VERSION} release on commit ${GIT_COMMIT} to the ${BINARY} path"
+
+  MAIN_FILE_LOCATION=$(find_main_file)
+  build_cmd="${cgo_option} go build -ldflags=\"${LDFLAGS}\" -o ${BINARY} ${MAIN_FILE_LOCATION}"
+  # Removing this as LDFLAGS are no longer an array from the config file
+  # build_cmd="${cgo_option} go build -ldflags=\"${LDFLAGS[*]}\" -o "${BINARY}" ${MAIN_FILE_LOCATION}"
+  # /bin/sh safe way to access the LDFLAGS array since arrays are not supported like bash
+  # build_cmd="${cgo_option} go build -ldflags=\"${LDFLAGS}\" -o "${BINARY}" ${MAIN_FILE_LOCATION}"
+
+  if [[ ${IS_DRY_RUN} == false ]]; then
+    eval ${build_cmd}
+  else
+    log_info "Build Command: ${build_cmd}"
+  fi
+
+  # if the binary was created the build probably worked
+  if [[ ${IS_DRY_RUN} == false ]]; then
+    if [[ ! -f ${BINARY} ]]; then
+      log_err "Something with the build went wrong"
+      log_debug "Build Command: ${build_cmd}"
+      exit 1
+    fi
+  fi
+
+
+  # Create the release artifacts
+  if [[ ${IS_PACKAGE} == true ]]; then
+    # Create a tarball of the release binary
+    log_info "Packaging the release for ${target}"
+    release_dir="releases"
+    filename="./${release_dir}/${target}.tar.gz"
+    release_files="./dist/${target}"
+
+    log_debug "Creating ${release_dir} directory"
+    if [[ ${IS_DRY_RUN} == false ]]; then
+      mkdir -p ${release_dir}
+    fi
+
+    log_debug "Adding extra release files: ${RELEASE_EXTRA_FILES}"
+    if [[ ${IS_DRY_RUN} == false ]]; then
+      # Convert comma separated string to space separated string to loop
+      RELEASE_EXTRA_FILES=$(echo ${RELEASE_EXTRA_FILES} | sed 's/,/ /g')
+
+      for file in ${RELEASE_EXTRA_FILES}; do
+        cp ${file} ${release_files}
+      done
+    fi
+
+    log_debug "Creating tarball for the ${target} release"
+    if [[ ${IS_DRY_RUN} == false ]]; then
+      tar -czf ${filename} ${release_files}
+    fi
+
+    # Generate the checksum file with sha256sum
+    log_debug "Generating the sha256 checksum file: '${filename}'"
+    if [[ ${IS_DRY_RUN} == false ]]; then
+      sha256sum ${filename} > "${filename}.sha256sum"
+    fi
+  fi
+done
+
+if [[ ${IS_DRY_RUN} == false ]]; then
+  log_info "Done building binaries"
+else
+  log_info "Dry run completed"
+fi
