@@ -6,7 +6,7 @@
 
 # Binaries for programs and plugins
 **/dist
-**/releases
+**/release
 *.exe
 *.exe~
 *.dll
