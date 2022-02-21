@@ -332,6 +332,14 @@ log_debug "${LDFLAGS}"
 # STEP 3: Actual Go build process
 # ========================================
 
+# Remove binaries if they already exist
+if [[ -d ${DEFAULT_DIST_DIR} ]]; then
+  log_info "Cleaning up existing files"
+  if [[ ${IS_DRY_RUN} == false ]]; then
+    clean_dist
+  fi
+fi
+
 TARGETS=""
 if [[ ${IS_BUILD_ALL} == false ]]; then
   arch="$(get_arch)"
