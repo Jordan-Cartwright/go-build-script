@@ -56,6 +56,7 @@ DEFAULT_BUILD_CONFIG="build.config"
 DEFAULT_DIST_DIR="dist"
 DOCKER_DIST_DIR="dist/docker"
 DEFAULT_GO_MAIN_FILE="main.go"
+DEFAULT_RELEASE_DIR="releases"
 VERSION=""
 USE_COLOR=true
 IS_BUILD_ALL=false
@@ -71,7 +72,7 @@ usage() {
   echo "Options:"
   echo "    --all               Build all system binaries"
   echo "-b, --build-version     Set the build version number to override a discovered version"
-  echo "    --clean             Delete any built binaries by removing the 'dist' and 'releases' folders"
+  echo "    --clean             Delete any built binaries by removing the '${DEFAULT_DIST_DIR}' and '${DEFAULT_RELEASE_DIR}' folders"
   echo "-c, --config            Path to your 'build.config' file if not using either the .ci or ci directory"
   echo "    --debug             Run using debug mode to display more log details (implies dry-run)"
   echo "    --docker            Sets the build folder output to '${DOCKER_DIST_DIR}' to aid multi stage builds"
@@ -79,7 +80,7 @@ usage() {
   echo "-h, --help              Show this help message"
   echo "-m, --main              Set the name of the main file to look for (default: ${DEFAULT_GO_MAIN_FILE})"
   echo "    --no-color          Do not output colored log messages"
-  echo "-p  --package           Creates the release artifacts in the 'releases' folder"
+  echo "-p  --package           Creates the release artifacts in the '${DEFAULT_RELEASE_DIR}' folder"
   echo "-v, --version           Show the version information"
   echo "    --with-cgo          Sets CGO_ENABLED to 1 when building your binary"
   echo ""
@@ -227,8 +228,8 @@ find_main_file() {
 
 # Removes the build output directories
 clean_dist() {
-  local build_folder="./dist"
-  local release_folder="./releases"
+  local build_folder="./${DEFAULT_DIST_DIR}"
+  local release_folder="./${DEFAULT_RELEASE_DIR}"
 
   if [[ -d ${build_folder} ]]; then
     log_info "Removing '${build_folder}' folder"
@@ -425,10 +426,10 @@ for target in $TARGETS; do
   if [[ ${IS_PACKAGE} == true ]]; then
     # Create a tarball of the release binary
     log_info "Packaging the ${target} release"
-    release_dir="releases"
+    release_dir="${DEFAULT_RELEASE_DIR}"
     target_tar=$(echo ${target} | sed 's/\//-/g')
     filename="./${release_dir}/${target_tar}.tar.gz"
-    release_files="./dist/${target}"
+    release_files="./${DEFAULT_DIST_DIR}/${target}"
 
     log_debug "Creating directory (${release_dir})"
     if [[ ${IS_DRY_RUN} == false ]]; then
