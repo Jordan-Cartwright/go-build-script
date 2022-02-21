@@ -314,8 +314,24 @@ log_debug "Version: ${VERSION}"
 log_debug "Package: ${GOLANG_PACKAGE}"
 
 # Check if configured variables exist
-if [[ -z ${BUILD_TARGETS} ]]; then
-  log_warn "There are no build targets configured, '--all' will not work properly, set the BUILD_TARGETS variable"
+if [[ -z ${BUILD_OS} ]]; then
+  message="There are no build operating systems configured, '--all' will not work properly, set the BUILD_OS variable"
+  if [[ ${IS_BUILD_ALL} == true ]]; then
+    log_err ${message}
+    is_error=true
+  else
+    log_warn ${message}
+  fi
+fi
+
+if [[ -z ${BUILD_ARCH} ]]; then
+  message="There are no build architectures configured, '--all' will not work properly, set the BUILD_ARCH variable"
+  if [[ ${IS_BUILD_ALL} == true ]]; then
+    log_err ${message}
+    is_error=true
+  else
+    log_warn ${message}
+  fi
 fi
 
 if [[ -z ${GOLANG_BINARY_NAME} ]]; then
