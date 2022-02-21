@@ -381,9 +381,6 @@ if [[ -d ${DEFAULT_DIST_DIR} ]]; then
   fi
 fi
 
-BUILD_TARGETS=$(get_build_targets)
-log_debug "Build Targets: ${BUILD_TARGETS}"
-
 TARGETS=""
 if [[ ${IS_BUILD_ALL} == false ]]; then
   arch="$(get_arch)"
@@ -394,6 +391,8 @@ if [[ ${IS_BUILD_ALL} == false ]]; then
   fi
   TARGETS="$(uname -s | awk '{print tolower($0)}')/${arch}"
 else
+  BUILD_TARGETS=$(get_build_targets)
+  log_debug "Build Targets: ${BUILD_TARGETS}"
   TARGETS=${BUILD_TARGETS}
 fi
 
