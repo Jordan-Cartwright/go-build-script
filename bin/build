@@ -194,6 +194,29 @@ get_arch() {
   echo ${arch}
 }
 
+# Generate the build targets list from the build.confg
+get_build_targets() {
+  local build_os=$(echo ${BUILD_OS} | sed 's/,/ /g')
+  local build_arch=$(echo ${BUILD_ARCH} | sed 's/,/ /g')
+  local build_targets=""
+
+  for os in $build_os; do
+    for arch in $build_arch; do
+      # validate a supported GOOS and GOARCH combination
+      if go tool dist list | grep -w ${os}/${arch} > /dev/null ; then
+        # add the combo to the build targets list
+        if [[ -z ${build_targets} ]]; then
+          build_targets="${os}/${arch}"
+        else
+          build_targets+=",${os}/${arch}"
+        fi
+      fi
+    done
+  done
+
+  echo ${build_targets}
+}
+
 # Finds the most recent git tag and returns 'edge' if the latest tag doesn't exist
 # for the HEAD branch and if the git working directory is not in a clean state
 #
