@@ -340,7 +340,7 @@ if [[ ${IS_BUILD_ALL} == false ]]; then
     log_err ${arch}
     exit 1
   fi
-  TARGETS="$(uname -s | awk '{print tolower($0)}')-${arch}"
+  TARGETS="$(uname -s | awk '{print tolower($0)}')/${arch}"
 else
   TARGETS=${BUILD_TARGETS}
 fi
@@ -351,8 +351,8 @@ TARGETS=$(echo ${TARGETS} | sed 's/,/ /g')
 log_debug "Building binaries for: ${TARGETS}"
 
 for target in $TARGETS; do
-  # split the target into target_info based on the delimiter, '-'
-  IFS="-" read -r -a target_info <<< "$target"
+  # split the target into target_info based on the delimiter, '/'
+  IFS="/" read -r -a target_info <<< "$target"
 
   export GOOS=${target_info[0]}
   export GOARCH=${target_info[1]}
@@ -417,7 +417,8 @@ for target in $TARGETS; do
     # Create a tarball of the release binary
     log_info "Packaging the release for ${target}"
     release_dir="releases"
-    filename="./${release_dir}/${target}.tar.gz"
+    target_tar=$(echo ${target} | sed 's/\//-/g')
+    filename="./${release_dir}/${target_tar}.tar.gz"
     release_files="./dist/${target}"
 
     log_debug "Creating ${release_dir} directory"
