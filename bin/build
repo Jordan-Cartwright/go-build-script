@@ -424,13 +424,13 @@ for target in $TARGETS; do
   # Create the release artifacts
   if [[ ${IS_PACKAGE} == true ]]; then
     # Create a tarball of the release binary
-    log_info "Packaging the release for ${target}"
+    log_info "Packaging the ${target} release"
     release_dir="releases"
     target_tar=$(echo ${target} | sed 's/\//-/g')
     filename="./${release_dir}/${target_tar}.tar.gz"
     release_files="./dist/${target}"
 
-    log_debug "Creating ${release_dir} directory"
+    log_debug "Creating directory (${release_dir})"
     if [[ ${IS_DRY_RUN} == false ]]; then
       mkdir -p ${release_dir}
     fi
