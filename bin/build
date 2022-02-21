@@ -1,6 +1,8 @@
 #!/bin/bash
 # set -exo pipefail
 
+# Source: https://github.com/Jordan-Cartwright/go-build-script
+
 # ------------------------------------
 #  ____   __   ____   __   _  _  ____
 # (  _ \ / _\ (  _ \ / _\ ( \/ )/ ___)
