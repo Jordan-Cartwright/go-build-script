@@ -480,14 +480,16 @@ for target in $TARGETS; do
   if [[ ${IS_PACKAGE} == true ]]; then
     # Create a tarball of the release binary
     log_info "Packaging the ${target} release"
-    release_dir="${DEFAULT_RELEASE_DIR}"
-    target_tar=$(echo ${target} | sed 's/\//-/g')
-    filename="./${release_dir}/${target_tar}.tar.gz"
-    release_files="./${DEFAULT_DIST_DIR}/${target}"
+    target_filename=$(echo ${target} | sed 's/\//-/g')
+    filename="${target_filename}"
+    artifact_files_dir="${PWD}/${DEFAULT_DIST_DIR}/${target}"
+    release_files_dir="${PWD}/${DEFAULT_RELEASE_DIR}"
+    artifact_dir_name=${GOLANG_BINARY_NAME}
+    tmp_dir_name="tmp-${filename}"
 
-    log_debug "Creating directory (${release_dir})"
+    log_debug "Creating directory (${DEFAULT_RELEASE_DIR})"
     if [[ ${IS_DRY_RUN} == false ]]; then
-      mkdir -p ${release_dir}
+      mkdir -p ${DEFAULT_RELEASE_DIR}
     fi
 
     log_debug "Adding extra release files: ${RELEASE_EXTRA_FILES}"
@@ -496,19 +498,53 @@ for target in $TARGETS; do
       RELEASE_EXTRA_FILES=$(echo ${RELEASE_EXTRA_FILES} | sed 's/,/ /g')
 
       for file in ${RELEASE_EXTRA_FILES}; do
-        cp ${file} ${release_files}
+        cp ${file} ${artifact_files_dir}
       done
     fi
 
-    log_debug "Creating tarball for the ${target} release"
+    # Do the tar/zip of the release files
+    if [[ "$GOOS" == "windows" ]]; then
+      log_debug "Creating zip file for the ${target} release"
+      artifact_filename="${filename}.zip"
+    else
+      log_debug "Creating tarball for the ${target} release"
+      artifact_filename="${filename}.tar.gz"
+    fi
+
     if [[ ${IS_DRY_RUN} == false ]]; then
-      tar -czf ${filename} ${release_files}
+      # prepare the release in a tmp directory
+      init_tmp_dir ${artifact_files_dir} ${tmp_dir_name}
+      # move the tmp directory into the release folder for processing
+      mv "${artifact_files_dir}/${tmp_dir_name}" "${release_files_dir}"
+      (
+        # move into the release directory
+        cd ${DEFAULT_RELEASE_DIR}
+        # rename the tmp file before compression
+        mv ${tmp_dir_name} ${artifact_dir_name}
+        # compress the artifact
+        if [[ "$GOOS" == "windows" ]]; then
+          # zip the release directory
+          if ! zip -r ${artifact_filename} ${artifact_dir_name} > /dev/null 2>&1 ; then
+            log_err "Building the zip file failed for the ${target} release"
+          fi
+        else
+          # tar the release directory
+          if ! tar -czf ${artifact_filename} ${artifact_dir_name} > /dev/null 2>&1 ; then
+            log_err "Building the tarball failed for the ${target} release"
+          fi
+        fi
+        # clean up
+        rm -r ${artifact_dir_name}
+      )
     fi
 
     # Generate the checksum file with sha256sum
     log_debug "Generating the sha256 checksum file: '${filename}'"
     if [[ ${IS_DRY_RUN} == false ]]; then
-      sha256sum ${filename} > "${filename}.sha256sum"
+      (
+        cd ${DEFAULT_RELEASE_DIR}
+        sha256sum ${artifact_filename} | awk '{print $1}' > "${artifact_filename}.sha256sum"
+      )
     fi
   fi
 done
