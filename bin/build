@@ -25,7 +25,7 @@
 # ------------------------------------------------------------------------------------------------------------------------
 # Configuration Variables
 # ------------------------------------------------------------------------------------------------------------------------
-# BUILD_OS            - A comma separated list of valid GOOS operating systems to to build for when using
+# BUILD_OS            - A comma separated list of valid GOOS operating systems to build for when using
 #                       the --all flag (i.e. "darwin,linux").
 # ------------------------------------------------------------------------------------------------------------------------
 # BUILD_ARCH          - A comma separated list of valid GOARCH architectures to build for when using
@@ -34,7 +34,7 @@
 # GOLANG_BINARY_NAME  - The binary name that will be used.
 # ------------------------------------------------------------------------------------------------------------------------
 # GOLANG_LDFLAGS      - The build LDFLAGS to add. This script supports adding the VERSION and GIT_COMMIT variables.
-#                       The Default is `-s -w -X main.version=${VERSION} -X main.gitCommit=${GIT_COMMIT}`.
+#                       The default flags are `-s -w -X main.version=${VERSION} -X main.gitCommit=${GIT_COMMIT}`.
 # ------------------------------------------------------------------------------------------------------------------------
 # GOLANG_PACKAGE      - The go package name (i.e. go module name or github path)
 # ------------------------------------------------------------------------------------------------------------------------
@@ -304,7 +304,7 @@ if [[ -n ${CONFIG} ]]; then
     exit 1
   fi
 else
-  # load the config from the defaults paths
+  # load the config from the default paths
   log_debug "Loading build.config file"
   . .ci/${DEFAULT_BUILD_CONFIG} > /dev/null 2>&1 || . ci/${DEFAULT_BUILD_CONFIG} > /dev/null 2>&1
   if [[ $? == 1 ]]; then
@@ -447,10 +447,6 @@ for target in $TARGETS; do
 
   MAIN_FILE_LOCATION=$(find_main_file)
   build_cmd="${cgo_option} go build -ldflags=\"${LDFLAGS}\" -o ${BINARY} ${MAIN_FILE_LOCATION}"
-  # Removing this as LDFLAGS are no longer an array from the config file
-  # build_cmd="${cgo_option} go build -ldflags=\"${LDFLAGS[*]}\" -o "${BINARY}" ${MAIN_FILE_LOCATION}"
-  # /bin/sh safe way to access the LDFLAGS array since arrays are not supported like bash
-  # build_cmd="${cgo_option} go build -ldflags=\"${LDFLAGS}\" -o "${BINARY}" ${MAIN_FILE_LOCATION}"
 
   if [[ ${IS_DRY_RUN} == false ]]; then
     eval ${build_cmd}
