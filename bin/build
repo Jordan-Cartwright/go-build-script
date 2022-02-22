@@ -270,6 +270,17 @@ clean_dist() {
   log_info "Clean up completed"
 }
 
+init_tmp_dir() {
+  local location=$1
+  local directory_name=$2
+
+  (
+    cd ${location}
+    mkdir ${directory_name}
+    cp ./*
+  )
+}
+
 if [[ ${IS_DRY_RUN} == true ]]; then
   log_warn "Dry run executing, nothing will be built"
 fi
