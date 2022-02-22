@@ -25,7 +25,7 @@
 # ------------------------------------------------------------------------------------------------------------------------
 # Configuration Variables
 # ------------------------------------------------------------------------------------------------------------------------
-# BUILD_OS            - A comma separated list of valid GOOS operating systems to to build for when using
+# BUILD_OS            - A comma separated list of valid GOOS operating systems to build for when using
 #                       the --all flag (i.e. "darwin,linux").
 # ------------------------------------------------------------------------------------------------------------------------
 # BUILD_ARCH          - A comma separated list of valid GOARCH architectures to build for when using
@@ -34,7 +34,7 @@
 # GOLANG_BINARY_NAME  - The binary name that will be used.
 # ------------------------------------------------------------------------------------------------------------------------
 # GOLANG_LDFLAGS      - The build LDFLAGS to add. This script supports adding the VERSION and GIT_COMMIT variables.
-#                       The Default is `-s -w -X main.version=${VERSION} -X main.gitCommit=${GIT_COMMIT}`.
+#                       The default flags are `-s -w -X main.version=${VERSION} -X main.gitCommit=${GIT_COMMIT}`.
 # ------------------------------------------------------------------------------------------------------------------------
 # GOLANG_PACKAGE      - The go package name (i.e. go module name or github path)
 # ------------------------------------------------------------------------------------------------------------------------
@@ -270,6 +270,17 @@ clean_dist() {
   log_info "Clean up completed"
 }
 
+init_tmp_dir() {
+  local location=$1
+  local directory_name=$2
+
+  (
+    cd ${location}
+    mkdir ${directory_name}
+    cp ./*
+  )
+}
+
 if [[ ${IS_DRY_RUN} == true ]]; then
   log_warn "Dry run executing, nothing will be built"
 fi
@@ -304,7 +315,7 @@ if [[ -n ${CONFIG} ]]; then
     exit 1
   fi
 else
-  # load the config from the defaults paths
+  # load the config from the default paths
   log_debug "Loading build.config file"
   . .ci/${DEFAULT_BUILD_CONFIG} > /dev/null 2>&1 || . ci/${DEFAULT_BUILD_CONFIG} > /dev/null 2>&1
   if [[ $? == 1 ]]; then
@@ -418,8 +429,9 @@ for target in $TARGETS; do
   # export GOOS=$(echo ${target_info} | awk '{print $1}')
   # export GOARCH=$(echo ${target_info} | awk '{print $2}')
 
+  binary_name=${GOLANG_BINARY_NAME}
   if [[ "$GOOS" == "windows" ]]; then
-    GOLANG_BINARY_NAME=${GOLANG_BINARY_NAME}.exe
+    binary_name=${GOLANG_BINARY_NAME}.exe
   fi
 
   DESTINATION="${DEFAULT_DIST_DIR}/${target}"
@@ -427,7 +439,7 @@ for target in $TARGETS; do
     DESTINATION=${DOCKER_DIST_DIR}
   fi
 
-  BINARY="${DESTINATION}/${GOLANG_BINARY_NAME}"
+  BINARY="${DESTINATION}/${binary_name}"
 
   log_debug "Creating directory (${DESTINATION})"
   if [[ ${IS_DRY_RUN} == false ]]; then
@@ -447,10 +459,6 @@ for target in $TARGETS; do
 
   MAIN_FILE_LOCATION=$(find_main_file)
   build_cmd="${cgo_option} go build -ldflags=\"${LDFLAGS}\" -o ${BINARY} ${MAIN_FILE_LOCATION}"
-  # Removing this as LDFLAGS are no longer an array from the config file
-  # build_cmd="${cgo_option} go build -ldflags=\"${LDFLAGS[*]}\" -o "${BINARY}" ${MAIN_FILE_LOCATION}"
-  # /bin/sh safe way to access the LDFLAGS array since arrays are not supported like bash
-  # build_cmd="${cgo_option} go build -ldflags=\"${LDFLAGS}\" -o "${BINARY}" ${MAIN_FILE_LOCATION}"
 
   if [[ ${IS_DRY_RUN} == false ]]; then
     eval ${build_cmd}
@@ -472,14 +480,16 @@ for target in $TARGETS; do
   if [[ ${IS_PACKAGE} == true ]]; then
     # Create a tarball of the release binary
     log_info "Packaging the ${target} release"
-    release_dir="${DEFAULT_RELEASE_DIR}"
-    target_tar=$(echo ${target} | sed 's/\//-/g')
-    filename="./${release_dir}/${target_tar}.tar.gz"
-    release_files="./${DEFAULT_DIST_DIR}/${target}"
+    target_filename=$(echo ${target} | sed 's/\//-/g')
+    filename="${GOLANG_BINARY_NAME}-${target_filename}"
+    artifact_files_dir="${PWD}/${DEFAULT_DIST_DIR}/${target}"
+    release_files_dir="${PWD}/${DEFAULT_RELEASE_DIR}"
+    artifact_dir_name=${GOLANG_BINARY_NAME}
+    tmp_dir_name="tmp-${filename}"
 
-    log_debug "Creating directory (${release_dir})"
+    log_debug "Creating directory (${DEFAULT_RELEASE_DIR})"
     if [[ ${IS_DRY_RUN} == false ]]; then
-      mkdir -p ${release_dir}
+      mkdir -p ${DEFAULT_RELEASE_DIR}
     fi
 
     log_debug "Adding extra release files: ${RELEASE_EXTRA_FILES}"
@@ -488,19 +498,53 @@ for target in $TARGETS; do
       RELEASE_EXTRA_FILES=$(echo ${RELEASE_EXTRA_FILES} | sed 's/,/ /g')
 
       for file in ${RELEASE_EXTRA_FILES}; do
-        cp ${file} ${release_files}
+        cp ${file} ${artifact_files_dir}
       done
     fi
 
-    log_debug "Creating tarball for the ${target} release"
+    # Do the tar/zip of the release files
+    if [[ "$GOOS" == "windows" ]]; then
+      log_debug "Creating zip file for the ${target} release"
+      artifact_filename="${filename}.zip"
+    else
+      log_debug "Creating tarball for the ${target} release"
+      artifact_filename="${filename}.tar.gz"
+    fi
+
     if [[ ${IS_DRY_RUN} == false ]]; then
-      tar -czf ${filename} ${release_files}
+      # prepare the release in a tmp directory
+      init_tmp_dir ${artifact_files_dir} ${tmp_dir_name}
+      # move the tmp directory into the release folder for processing
+      mv "${artifact_files_dir}/${tmp_dir_name}" "${release_files_dir}"
+      (
+        # move into the release directory
+        cd ${DEFAULT_RELEASE_DIR}
+        # rename the tmp file before compression
+        mv ${tmp_dir_name} ${artifact_dir_name}
+        # compress the artifact
+        if [[ "$GOOS" == "windows" ]]; then
+          # zip the release directory
+          if ! zip -r ${artifact_filename} ${artifact_dir_name} > /dev/null 2>&1 ; then
+            log_err "Building the zip file failed for the ${target} release"
+          fi
+        else
+          # tar the release directory
+          if ! tar -czf ${artifact_filename} ${artifact_dir_name} > /dev/null 2>&1 ; then
+            log_err "Building the tarball failed for the ${target} release"
+          fi
+        fi
+        # clean up
+        rm -r ${artifact_dir_name}
+      )
     fi
 
     # Generate the checksum file with sha256sum
     log_debug "Generating the sha256 checksum file: '${filename}'"
     if [[ ${IS_DRY_RUN} == false ]]; then
-      sha256sum ${filename} > "${filename}.sha256sum"
+      (
+        cd ${DEFAULT_RELEASE_DIR}
+        sha256sum ${artifact_filename} | awk '{print $1}' > "${artifact_filename}.sha256sum"
+      )
     fi
   fi
 done
