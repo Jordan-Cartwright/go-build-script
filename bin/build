@@ -418,8 +418,9 @@ for target in $TARGETS; do
   # export GOOS=$(echo ${target_info} | awk '{print $1}')
   # export GOARCH=$(echo ${target_info} | awk '{print $2}')
 
+  binary_name=${GOLANG_BINARY_NAME}
   if [[ "$GOOS" == "windows" ]]; then
-    GOLANG_BINARY_NAME=${GOLANG_BINARY_NAME}.exe
+    binary_name=${GOLANG_BINARY_NAME}.exe
   fi
 
   DESTINATION="${DEFAULT_DIST_DIR}/${target}"
@@ -427,7 +428,7 @@ for target in $TARGETS; do
     DESTINATION=${DOCKER_DIST_DIR}
   fi
 
-  BINARY="${DESTINATION}/${GOLANG_BINARY_NAME}"
+  BINARY="${DESTINATION}/${binary_name}"
 
   log_debug "Creating directory (${DESTINATION})"
   if [[ ${IS_DRY_RUN} == false ]]; then
