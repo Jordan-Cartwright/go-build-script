@@ -481,7 +481,7 @@ for target in $TARGETS; do
     # Create a tarball of the release binary
     log_info "Packaging the ${target} release"
     target_filename=$(echo ${target} | sed 's/\//-/g')
-    filename="${target_filename}"
+    filename="${GOLANG_BINARY_NAME}-${target_filename}"
     artifact_files_dir="${PWD}/${DEFAULT_DIST_DIR}/${target}"
     release_files_dir="${PWD}/${DEFAULT_RELEASE_DIR}"
     artifact_dir_name=${GOLANG_BINARY_NAME}
