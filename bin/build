@@ -277,7 +277,12 @@ init_tmp_dir() {
   (
     cd ${location}
     mkdir ${directory_name}
-    cp ./*
+    # Copy all the files in the current directory into the tmp directory
+    for file in $(ls -a1 .); do
+      if [ "${file}" != "." ] && [ "${file}" != ".." ] && [ "${file}" != "${directory_name}" ]; then
+        cp ${file} ${directory_name}
+      fi
+    done
   )
 }
 
