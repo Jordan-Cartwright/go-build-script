@@ -185,6 +185,15 @@ log_err() {
   fi
 }
 
+# Check if the command exists in the system's list of commands
+check_command() {
+  if command -v "$1" >/dev/null 2>&1; then
+    return 0
+  else
+    return 1
+  fi
+}
+
 # Gets the canonicalized names for target architectures
 get_arch() {
   arch=""
@@ -294,6 +303,18 @@ if [[ ${IS_CLEAN} == true ]]; then
   clean_dist
   exit 0
 fi
+
+# ========================================
+# STEP 0: Validate the required commands
+# ========================================
+
+required_commands="go tar zip sha256sum"
+for cmd in ${required_commands}; do
+  if ! check_command ${cmd}; then
+    log_err "The required command '${cmd}' is not available."
+    exit 1
+  fi
+done
 
 # ========================================
 # STEP 1: Determinate the required values
