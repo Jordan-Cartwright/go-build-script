@@ -40,7 +40,7 @@
 # ------------------------------------------------------------------------------------------------------------------------
 # GOLANG_VERSION_PKG  - The location of the version package in the code base. (i.e. internal/version)
 # ------------------------------------------------------------------------------------------------------------------------
-# RELEASE_EXTRA_FILES - A comma separated list of files to include in the release tarball (i.e. "LICENCE,README.md").
+# RELEASE_EXTRA_FILES - A comma separated list of files to include in the release tarball (i.e. "LICENSE,README.md").
 # ------------------------------------------------------------------------------------------------------------------------
 
 cd $(cd `dirname "$0"`; cd ..; pwd)
@@ -377,16 +377,16 @@ if [[ -z ${BUILD_ARCH} ]]; then
 fi
 
 if [[ -z ${GOLANG_BINARY_NAME} ]]; then
-  log_warn "There is no binary name configred, the binary will use the golang default, set the GOLANG_BINARY_NAME variable"
+  log_warn "There is no binary name configured, the binary will use the golang default, set the GOLANG_BINARY_NAME variable"
 fi
 
 if [[ -z ${GOLANG_PACKAGE} ]]; then
-  log_err "There is no go package name configred, set the GOLANG_PACKAGE variable"
+  log_err "There is no go package name configured, set the GOLANG_PACKAGE variable"
   is_error=true
 fi
 
 if [[ -z ${GOLANG_VERSION_PKG} ]]; then
-  log_err "There is no version package location configred, set the GOLANG_VERSION_PKG variable"
+  log_err "There is no version package location configured, set the GOLANG_VERSION_PKG variable"
   is_error=true
 fi
 
