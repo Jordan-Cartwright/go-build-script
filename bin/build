@@ -31,6 +31,9 @@
 # BUILD_ARCH          - A comma separated list of valid GOARCH architectures to build for when using
 #                       the --all flag (i.e. "amd64,arm64").
 # ------------------------------------------------------------------------------------------------------------------------
+# SKIP_BUILD          - A comma separated list of build combinations that should not be built
+#                       (i.e. "windows-arm,darwin-arm64").
+# ------------------------------------------------------------------------------------------------------------------------
 # GOLANG_BINARY_NAME  - The binary name that will be used.
 # ------------------------------------------------------------------------------------------------------------------------
 # GOLANG_LDFLAGS      - The build LDFLAGS to add. This script supports adding the VERSION and GIT_COMMIT variables.
@@ -212,12 +215,17 @@ get_arch() {
 get_build_targets() {
   local build_os=$(echo ${BUILD_OS} | sed 's/,/ /g')
   local build_arch=$(echo ${BUILD_ARCH} | sed 's/,/ /g')
+  local skip_build=$(echo ${SKIP_BUILD} | sed 's/,/\\n/g')
   local build_targets=""
 
   for os in $build_os; do
     for arch in $build_arch; do
       # validate a supported GOOS and GOARCH combination
       if go tool dist list | grep -w ${os}/${arch} > /dev/null ; then
+        # check that this is not a skipped combination
+        if [[ "$(echo -e ${skip_build} | grep ${os}-${arch})" != "" ]]; then
+          continue
+        fi
         # add the combo to the build targets list
         if [[ -z ${build_targets} ]]; then
           build_targets="${os}/${arch}"
